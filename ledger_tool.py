@@ -129,6 +129,31 @@ def cmd_today(args):
     for cat, amt, note, dt in rows:
         t = dt[11:16] if len(dt) > 11 else ""
         print(f"  {t} ¥{amt:.1f} [{cat}] {note}")
+
+    # 智能点评：跟最近 30 天日均对比
+    month = datetime.now().strftime("%Y-%m")
+    day = datetime.now().day
+    month_total = conn.execute(
+        "SELECT SUM(amount) FROM transactions WHERE type='expense' AND date LIKE ?",
+        (f"{month}%",),
+    ).fetchone()[0] or 0
+    daily_avg = month_total / day if day > 1 else month_total
+
+    # 今日最大支出分类
+    by_cat = {}
+    for cat, amt, _, _ in rows:
+        by_cat[cat] = by_cat.get(cat, 0) + amt
+    top_cat = max(by_cat, key=by_cat.get) if by_cat else None
+
+    print()
+    if daily_avg > 0 and total > daily_avg * 1.5:
+        print(f"💡 今天花得偏多（本月日均 ¥{daily_avg:.0f}）")
+    elif daily_avg > 0 and total < daily_avg * 0.5:
+        print(f"💡 今天花得很少（本月日均 ¥{daily_avg:.0f}）")
+    else:
+        print(f"💡 正常水平（本月日均 ¥{daily_avg:.0f}）")
+    if top_cat and by_cat[top_cat] > total * 0.6 and len(by_cat) > 1:
+        print(f"💡 今天主要花在 [{top_cat}]（¥{by_cat[top_cat]:.0f}，占 {by_cat[top_cat]/total*100:.0f}%）")
     conn.close()
 
 
@@ -192,7 +217,9 @@ def cmd_search(args):
 
 def cmd_stats(args):
     month = datetime.now().strftime("%Y-%m")
+    year = datetime.now().strftime("%Y")
     conn = get_conn()
+    day = datetime.now().day
 
     # 本月总计
     total = conn.execute(
@@ -201,7 +228,6 @@ def cmd_stats(args):
     ).fetchone()[0] or 0
 
     # 日均
-    day = datetime.now().day
     daily_avg = total / day if day > 0 else 0
 
     # 上月同期对比
@@ -211,13 +237,74 @@ def cmd_stats(args):
         (f"{last_month}%", day),
     ).fetchone()[0] or 0
 
+    # 本月分类 top 3
+    cats = conn.execute(
+        "SELECT category, SUM(amount) FROM transactions WHERE type='expense' AND date LIKE ? GROUP BY category ORDER BY SUM(amount) DESC LIMIT 3",
+        (f"{month}%",),
+    ).fetchall()
+
+    # 上月同分类对比（找涨幅最大的）
+    cat_changes = []
+    for cat, amt in cats:
+        last_cat = conn.execute(
+            "SELECT SUM(amount) FROM transactions WHERE type='expense' AND category=? AND date LIKE ?",
+            (cat, f"{last_month}%"),
+        ).fetchone()[0] or 0
+        if last_cat > 0:
+            change_pct = (amt - last_cat) / last_cat * 100
+            cat_changes.append((cat, amt, last_cat, change_pct))
+
+    # 今年同月历史（同一天数对比）
+    year_months = conn.execute(
+        "SELECT SUBSTR(date, 1, 7) as m, SUM(amount) FROM transactions WHERE type='expense' AND SUBSTR(date, 1, 4)=? GROUP BY m ORDER BY m",
+        (year,),
+    ).fetchall()
+
     print(f"📈 {month} 统计")
     print(f"  本月总计: ¥{total:,.1f}")
     print(f"  日均: ¥{daily_avg:,.1f}")
-    print(f"  上月同期: ¥{last_total:,.1f}")
+    print(f"  上月同期（前{day}天）: ¥{last_total:,.1f}")
     if last_total > 0:
         change = (total - last_total) / last_total * 100
         print(f"  同比: {'↑' if change > 0 else '↓'}{abs(change):.0f}%")
+
+    # 分类 top 3
+    if cats:
+        print(f"\n  本月 Top 3:")
+        for cat, amt in cats:
+            pct = amt / total * 100 if total > 0 else 0
+            print(f"    {cat}: ¥{amt:,.0f} ({pct:.0f}%)")
+
+    # 智能点评
+    print()
+    insights = []
+
+    # 哪个分类涨了最多
+    if cat_changes:
+        biggest_rise = max(cat_changes, key=lambda x: x[3])
+        if biggest_rise[3] > 30:
+            insights.append(f"[{biggest_rise[0]}] 比上月涨了 {biggest_rise[3]:.0f}%（¥{biggest_rise[1]:,.0f} vs ¥{biggest_rise[2]:,.0f}）")
+        biggest_drop = min(cat_changes, key=lambda x: x[3])
+        if biggest_drop[3] < -30:
+            insights.append(f"[{biggest_drop[0]}] 比上月降了 {abs(biggest_drop[3]):.0f}%")
+
+    # 按当前日均预估全月
+    if daily_avg > 0:
+        projected = daily_avg * 30
+        insights.append(f"按当前节奏预估全月 ¥{projected:,.0f}")
+
+    # 今年月度趋势一句话
+    if len(year_months) > 1:
+        amounts = [a for _, a in year_months]
+        avg_monthly = sum(amounts) / len(amounts)
+        if total > avg_monthly * 1.3:
+            insights.append(f"本月偏高（今年月均 ¥{avg_monthly:,.0f}）")
+        elif total < avg_monthly * 0.7:
+            insights.append(f"本月偏低（今年月均 ¥{avg_monthly:,.0f}）")
+
+    for i in insights:
+        print(f"💡 {i}")
+
     conn.close()
 
 
