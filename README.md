@@ -1,6 +1,28 @@
 # ledger-cli 💰
 
+> 🧠 **AI Agent Skill** — Let your agent track your daily expenses in natural language. Zero UI, data stays local.
+> Works with [OpenClaw](https://github.com/openclaw/openclaw) · [Claude Code](https://claude.com/claude-code) · and any agent runtime that can shell out.
+
 **跟 AI 说句话就记好账。不用打开 APP，不用登录，数据全在本地。**
+
+---
+
+## What's this?
+
+这是一个 **AI agent skill**：让你的 AI 助手直接负责记账，你只需要用自然语言说出来。
+
+跟你的 agent 说：
+- *"午饭 35"* → agent 调 `ledger add` 记一笔 35 元饮食支出
+- *"昨天买了瓶水 3 块"* → agent 带日期记录
+- *"这个月我吃了多少钱"* → agent 调 `ledger query` 统计分类汇总
+- *"本周总支出"* → agent 给你周报
+
+**支持的 agent 运行时**：
+- [OpenClaw](https://github.com/openclaw/openclaw) —— 自托管多 agent 编排平台
+- [Claude Code](https://claude.com/claude-code) —— 可通过 bash tool 调用
+- 任何支持 shell 执行的 agent 框架（Cursor / Aider / Codex CLI / Continue / Gemini CLI / ...）
+
+**也能当纯 CLI 用**：不用 agent 直接 `ledger add 午饭 35` 也完全可以。
 
 ---
 
